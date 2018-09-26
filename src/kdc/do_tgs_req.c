@@ -67,6 +67,7 @@
 #include "policy.h"
 #include "extern.h"
 #include "adm_proto.h"
+#include "kdc_acl.h"
 #include <ctype.h>
 
 static krb5_error_code
@@ -118,9 +119,10 @@ process_tgs_req(krb5_kdc_req *request, krb5_data *pkt,
     krb5_keyblock session_key;
     krb5_keyblock *reply_key = NULL;
     krb5_key_data  *server_key;
+    char *cname = NULL, *sname = NULL;
     krb5_principal cprinc = NULL, sprinc = NULL, altcprinc = NULL;
     krb5_last_req_entry *nolrarray[2], nolrentry;
-    int errcode;
+    int errcode, errcode2;
     const char        *status = 0;
     krb5_enc_tkt_part *header_enc_tkt = NULL; /* TGT */
     krb5_enc_tkt_part *subject_tkt = NULL; /* TGT or evidence ticket */
@@ -176,6 +178,14 @@ process_tgs_req(krb5_kdc_req *request, krb5_data *pkt,
                                   &pa_tgs_req);
     if (header_ticket && header_ticket->enc_part2)
         cprinc = header_ticket->enc_part2->client;
+
+    errcode2 = krb5_unparse_name(kdc_context, cprinc, &cname);
+    if (errcode2) {
+        status = "UNPARSING CLIENT";
+        errcode = errcode2;
+        goto cleanup;
+    }
+    limit_string(cname);
 
     if (errcode) {
         status = "PROCESS_TGS";
@@ -235,6 +245,20 @@ process_tgs_req(krb5_kdc_req *request, krb5_data *pkt,
     if (isflagset(request->kdc_options, KDC_OPT_CANONICALIZE)) {
         setflag(c_flags, KRB5_KDB_FLAG_CANONICALIZE);
         setflag(s_flags, KRB5_KDB_FLAG_CANONICALIZE);
+    }
+
+    /*
+     * Apply ACLs to the TGS request
+     */
+    if ((errcode = krb5_unparse_name(kdc_context, request->server, &sname))) {
+        status = "UNPARSING SERVER";
+        goto cleanup;
+    }
+    limit_string(sname);
+    if (!kdc_acl_check_tgs_req(kdc_context, sname, from, cname)) {
+        errcode = KRB5KRB_ERR_GENERIC;
+        status = "KDC_ACL_FAILED";
+        goto cleanup;
     }
 
     errcode = search_sprinc(kdc_active_realm, request, s_flags, &server,
@@ -843,6 +867,10 @@ cleanup:
         krb5_free_kdc_req(kdc_context, request);
     if (state)
         kdc_free_rstate(state);
+    if (cname != NULL)
+        free(cname);
+    if (sname != NULL)
+        free(sname);
     krb5_db_free_principal(kdc_context, server);
     krb5_db_free_principal(kdc_context, stkt_server);
     krb5_db_free_principal(kdc_context, header_server);
