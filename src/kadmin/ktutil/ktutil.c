@@ -140,7 +140,7 @@ void ktutil_add_entry(argc, argv)
     char *princ = NULL;
     char *enctype = NULL;
     krb5_kvno kvno = 0;
-    int use_pass = 0, use_key = 0, use_kvno = 0, i;
+    int use_pass = 0, use_key = 0, use_kvno = 0, randkey = 0, i;
     char *salt = NULL;
 
     for (i = 1; i < argc; i++) {
@@ -167,6 +167,11 @@ void ktutil_add_entry(argc, argv)
         }
         if ((strlen(argv[i]) == 2) && !strncmp(argv[i], "-s", 2)) {
             salt = argv[++i];
+            continue;
+        }
+        if ((strlen(argv[i]) == 8) && !strncmp(argv[i], "-randkey", 8)) {
+            use_key++;
+            randkey++;
             continue;
         }
     }
