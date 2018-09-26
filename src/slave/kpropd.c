@@ -139,6 +139,8 @@ static krb5_address *sender_addr;
 static krb5_address *receiver_addr;
 static const char *port = KPROP_SERVICE;
 
+static char* receiver_ip_addr = NULL;
+
 static char **db_args = NULL;
 static int db_args_size = 0;
 
@@ -172,6 +174,7 @@ usage()
             progname);
     fprintf(stderr, _("\t[-F kerberos_db_file ] [-p kdb5_util_pathname]\n"));
     fprintf(stderr, _("\t[-x db_args]* [-P port] [-a acl_file]\n"));
+    fprintf(stderr, _("\t[-R receiver_ip_addr]\n"));
     fprintf(stderr, _("\t[-A admin_server] [--pid-file=pid_file]\n"));
     exit(1);
 }
@@ -1060,7 +1063,7 @@ parse_args(int argc, char **argv)
     }
 
     progname = argv[0];
-    while ((c = getopt_long(argc, argv, "A:f:F:p:P:r:s:DdSa:tx:",
+    while ((c = getopt_long(argc, argv, "A:f:F:p:P:r:s:DdRSa:tx:",
                             long_options, NULL)) != -1) {
         switch (c) {
         case 'A':
@@ -1090,6 +1093,11 @@ parse_args(int argc, char **argv)
             break;
         case 'd':
             debug++;
+            break;
+        case 'R':
+            receiver_ip_addr = optarg;
+            if (receiver_ip_addr == NULL)
+                usage();
             break;
         case 'S':
             /* Standalone mode is now auto-detected; see main(). */
@@ -1202,6 +1210,18 @@ kerberos_authenticate(krb5_context context, int fd, krb5_principal *clientp,
 
     sockaddr2krbaddr(context, r_sin.ss_family, (struct sockaddr *)&r_sin,
                      &receiver_addr);
+
+    /* if a receiver ip addr was provided, override the real addr */
+    if (receiver_ip_addr != NULL) {
+        receiver_addr->addrtype = AF_INET;
+        receiver_addr->length = sizeof(struct in_addr);
+        if(inet_pton(AF_INET, receiver_ip_addr,
+                     (struct in_addr *) (void *) receiver_addr->contents) <= 0) {
+            com_err(progname, errno, _("while creating receiver "
+                                       "socket address"));
+            exit(1);
+        }
+    }
 
     if (debug) {
         retval = krb5_unparse_name(context, server, &name);
