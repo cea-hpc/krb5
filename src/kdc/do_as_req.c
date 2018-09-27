@@ -72,6 +72,7 @@
 #include "policy.h"
 #include <kadm5/admin.h>
 #include "adm_proto.h"
+#include "kdc_acl.h"
 #include "extern.h"
 
 static krb5_error_code
@@ -585,6 +586,18 @@ process_as_req(krb5_kdc_req *request, krb5_data *req_pkt,
                                      &state->sname)))
         goto errout;
     limit_string(state->sname);
+
+    /*
+     * Apply ACLs to the AS request
+     */
+    if (!kdc_acl_check_as_req(kdc_context,
+                              state->cname,
+                              state->remote_addr,
+                              state->sname)) {
+        errcode = KRB5KRB_ERR_GENERIC;
+        state->status = "KDC_ACL_FAILED";
+        goto errout;
+    }
 
     /*
      * We set KRB5_KDB_FLAG_CLIENT_REFERRALS_ONLY as a hint

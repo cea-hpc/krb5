@@ -30,6 +30,7 @@
 #include "adm_proto.h"
 #include "kdc_util.h"
 #include "kdc_audit.h"
+#include "kdc_acl.h"
 #include "extern.h"
 #include "policy.h"
 #include "kdc5_err.h"
